@@ -6,12 +6,14 @@ import matplotlib.pyplot as plt
 
 
 MAX_DATA_POINTS = 100
-
+FILTER_POINTS = 10
 
 # Replace with your serial port name
 SERIAL_PORT = 'COM4'      # Windows example: COM3, Linux/Mac: '/dev/ttyUSB0'
 BAUD_RATE = 115200         # Match your device's baud rate
 
+averagePressFilter = []
+averageTempFilter = []
 
 #Data Buffers
 temp_data = []
@@ -22,7 +24,20 @@ time_data = []
 plt.ion()  # turning interactive mode on
 figure,axis = plt.subplots(1,2)
 
+def averageFilter(temp,press):
+    if(len(averagePressFilter) == FILTER_POINTS):
+        averagePressFilter.pop(0)
+        averageTempFilter.pop(0)
+    
+    averagePressFilter.append(press)
+    averageTempFilter.append(temp)
 
+    if(len(averagePressFilter)<FILTER_POINTS): #Not enough data to fill the filter window. We return this default -999 value
+        return (-999,-999)
+    else:
+        meanPress = sum(averagePressFilter)/FILTER_POINTS
+        tempPress = sum(averageTempFilter)/FILTER_POINTS
+        return (meanPress,tempPress)
 
 def updatePlot(temp,pressure,time,figure,axis):
     figure.remove
@@ -70,12 +85,12 @@ try:
         if ser.in_waiting > 0:
             line = ser.readline().decode('utf-8').strip()            
             ser.reset_input_buffer()
-            pattern = r"[-+]?\d*\.\d+" #Catching decimal numbers from serial
+            pattern = r"[-+]?\d+\.\d{2}" #Catching decimal numbers from serial
             data = re.findall(pattern, line)
             
-            print(f"Received: {line}") # Printing for debug purpuses
+            print(f"Received: {line} - Filtered by Regex: {data}") # Printing for debug purpuses
 
-            #This condition descards incomplete data coming from serial. Temperature and pressure
+            #This condition discards incomplete data coming from serial. Temperature and pressure
             # should come in pairs
             if(len(data)==2):
                 temperature = float(data[0])            
@@ -84,8 +99,9 @@ try:
                 #Associating time to measure
                 end_time = time.time()
                 elapsed = end_time - start_time
-                
-                updatePlot(temperature,pressure,elapsed,figure,axis)
+                meanTempPress = averageFilter(temperature,pressure) # Returns a tuple with average pressure and temperature e.g. (960,25)
+                if(meanTempPress[0]!= -999):
+                    updatePlot(meanTempPress[1],meanTempPress[0],elapsed,figure,axis)
             
 
 except serial.SerialException as e:
